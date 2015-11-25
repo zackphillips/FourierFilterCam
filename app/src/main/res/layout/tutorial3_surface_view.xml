@@ -1,6 +1,35 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:weightSum="1">
+
+    <ImageButton
+        android:layout_width="55dp"
+        android:layout_height="55dp"
+        android:id="@+id/fourierTransformButton"
+        android:clickable="true"
+        android:src="@drawable/Fourier"
+        android:alpha="0.6"
+        android:scaleType="fitCenter"
+        android:maxHeight="60dp"
+        android:maxWidth="60dp"
+        android:nestedScrollingEnabled="false"
+        android:layout_weight="0.12"
+        android:layout_gravity="bottom" />
+
+    <ImageButton
+        android:layout_width="55dp"
+        android:layout_height="55dp"
+        android:id="@+id/inverseFourierTransformButton"
+        android:layout_gravity="bottom"
+        android:clickable="true"
+        android:src="@drawable/InverseFourier"
+        android:alpha="0.6"
+        android:scaleType="fitCenter"
+        android:maxHeight="60dp"
+        android:maxWidth="36dp"
+        android:nestedScrollingEnabled="false"
+        android:layout_weight="0.06" />
 
     <fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamView
         android:layout_width="match_parent"
