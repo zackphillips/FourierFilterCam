@@ -1,0 +1,11 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:id="@+id/fourier_filter_cam_surface_view" />
+
+</LinearLayout>
