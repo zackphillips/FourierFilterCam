@@ -11,8 +11,10 @@ import android.view.MotionEvent;
 import android.view.SubMenu;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.View.OnTouchListener;
 import android.view.WindowManager;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -27,7 +29,6 @@ import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private Mat imgFloat;
     private Mat imgUint;
 
+    private ImageButton fourierButton;
+    private ImageButton inverseFourierButton;
 
     private List<Mat> rgbChannels;
     private List<Mat> rgbaChannels;
@@ -105,6 +108,21 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
 
+        // Set up buttons
+        fourierButton = (ImageButton) findViewById(R.id.fourierTransformButton);
+        inverseFourierButton = (ImageButton) findViewById(R.id.inverseFourierTransformButton);
+
+        fourierButton.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+                dftFlag = true;
+            }
+        });
+
+        inverseFourierButton.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+                dftFlag = false;
+            }
+        });
 
     }
 
@@ -129,7 +147,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
     public void onCameraViewStarted(int width, int height) {
         mResolutionList = mOpenCvCameraView.getResolutionList();
-        Size resolution = mResolutionList.get(6);
+        Size resolution = mResolutionList.get(4);
         mOpenCvCameraView.setResolution(resolution);
         height = resolution.height;
         width = resolution.width;
@@ -142,6 +160,9 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         dftCols = Core.getOptimalDFTSize(imgXSize); // on the border
 
         zeroPadded = new Mat(dftCols, dftRows, CvType.CV_32FC1); // expand input
+
+        imgFloat = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_32FC1);
+        imgUint = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC1);
 
         complexI = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_32FC2);
         complexFilter = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_32FC2);
@@ -159,7 +180,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         filterPlanes.add(magImg);
         filterPlanes.add(magImg);
 
-        returnMat = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC1);
+        returnMat = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC3);
 
         rgbChannels = new ArrayList<Mat>();
         rgbChannels.add(imgUint);
@@ -167,14 +188,11 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         rgbChannels.add(imgUint);
 
         rgbaChannels = new ArrayList<Mat>();
-        rgbaChannels.add(magImg);
-        rgbaChannels.add(magImg);
-        rgbaChannels.add(magImg);
+        rgbaChannels.add(imgUint);
+        rgbaChannels.add(imgUint);
 
-        imgFloat = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_32FC1);
-        imgUint = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC1);
 
-        touchMask = Mat.ones(height, width, CvType.CV_8UC1);
+        touchMask = Mat.ones(height, width, CvType.CV_32FC1);
     }
 
     public void onCameraViewStopped() {
@@ -183,12 +201,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
         if (dftFlag) // Display Fourier Transform of Image
         {
-            Contrib.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Contrib.COLORMAP_AUTUMN);
-            Log.i("TEMPTEST", String.format("returnMat type: %d", returnMat.type()));
-            Log.i("TEMPTEST", String.format("touchMask type: %d", touchMask.type()));
+            Contrib.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Contrib.COLORMAP_JET);
 
-            //TODO - figure out how to make this an alpha value
-            Core.bitwise_and(Mat.ones(returnMat.rows(), returnMat.cols(), returnMat.type()), returnMat, returnMat, touchMask);
         }
 
         else // Display Filtered Image
@@ -255,37 +269,22 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private Mat fftMagnitude(Mat imGray) {
         imGray.convertTo(imGray, CvType.CV_32FC1);
 
-        Imgproc.copyMakeBorder(imGray, zeroPadded, 0, imgYSize - imGray.rows(), 0,
-                imgXSize - imGray.cols(), Imgproc.BORDER_CONSTANT);
-
-        complexPlanes.set(0, zeroPadded);
-        complexPlanes.set(1, Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_32FC1));
-
-        //filterPlanes.set(0, touchMask);
-        //filterPlanes.set(1, touchMask);
-
-        Core.merge(complexPlanes, complexI);
-        Core.merge(filterPlanes, complexFilter);
-        Core.dft(complexI, complexI);
-        complexI = fftShift(complexI);
-
+        Core.dft(imGray, complexI, Core.DFT_COMPLEX_OUTPUT, imGray.rows());
         Core.split(complexI, complexPlanes);
-
         Core.magnitude(complexPlanes.get(0), complexPlanes.get(1), magImg);
         Core.log(magImg, magImg);
-
-        // Apply alpha mask
-        //magImg = magImg.mul(touchMask);
+        magImg = fftShift(magImg);
 
         Core.normalize(magImg, magImg, 0, 255, Core.NORM_MINMAX);
-        magImg.convertTo(magImg, CvType.CV_8UC1);
+        magImg.convertTo(imgUint, CvType.CV_8UC1);
 
         // Release Matricies
         complexPlanes.get(0).release();
         complexPlanes.get(1).release();
         imGray.release();
         complexI.release();
-        return magImg;
+
+        return imgUint;
     }
 
     private Mat applyFourierFilter(Mat imRgb) {
@@ -403,7 +402,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         mX = x;
         mY = y;
         Point touchPoint = new Point(x, y);
-        Core.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
+        Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
         Log.i("TOUCHTEST", "START DRAWING");
     }
 
@@ -415,7 +414,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             mX = x;
             mY = y;
             Point touchPoint = new Point(x, y);
-            Core.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
+            Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
         }
     }
 
