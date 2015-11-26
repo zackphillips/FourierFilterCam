@@ -1,40 +1,98 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:weightSum="1">
-
-    <ImageButton
-        android:layout_width="55dp"
-        android:layout_height="55dp"
-        android:id="@+id/fourierTransformButton"
-        android:clickable="true"
-        android:src="@drawable/Fourier"
-        android:alpha="0.6"
-        android:scaleType="fitCenter"
-        android:maxHeight="60dp"
-        android:maxWidth="60dp"
-        android:nestedScrollingEnabled="false"
-        android:layout_weight="0.12"
-        android:layout_gravity="bottom" />
-
-    <ImageButton
-        android:layout_width="55dp"
-        android:layout_height="55dp"
-        android:id="@+id/inverseFourierTransformButton"
-        android:layout_gravity="bottom"
-        android:clickable="true"
-        android:src="@drawable/InverseFourier"
-        android:alpha="0.6"
-        android:scaleType="fitCenter"
-        android:maxHeight="60dp"
-        android:maxWidth="36dp"
-        android:nestedScrollingEnabled="false"
-        android:layout_weight="0.06" />
+    android:keepScreenOn="true">
 
     <fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
         android:visibility="gone"
         android:id="@+id/fourier_filter_cam_surface_view" />
 
+    <ImageButton
+        android:id="@+id/fourierTransformButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentLeft="true"
+        android:maxHeight="80dp"
+        android:maxWidth="80dp"
+        android:minHeight="80dp"
+        android:minWidth="80dp"
+        android:visibility="invisible" />
+
+    <ImageButton
+        android:id="@+id/inverseFourierTransformButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentLeft="true"
+        android:text="Setup"
+        android:minHeight="80dp"
+        android:minWidth="80dp"
+        android:maxWidth="80dp"
+        android:maxHeight="80dp"
+        android:visibility="visible" />
+
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentRight="true"
+        android:text="Clear Filter"
+        android:id="@+id/clearFilterButton"
+        android:layout_weight="0" />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:text="Invert Filter"
+        android:id="@+id/invertFilterButton"
+        android:layout_toLeftOf="@+id/clearFilterButton"
+        android:layout_weight="0.1" />
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+        android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <Spinner
+                android:layout_width="180dp"
+                android:layout_height="41dp"
+                android:id="@+id/filterListSpinner"
+                android:spinnerMode="dropdown" />
+
+            <TextView
+                android:id="@+id/brushWidthLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="0.52"
+                android:gravity="right|end"
+                android:paddingLeft="10dp"
+                android:text="Brush Width"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:paddingRight="10dp" />
+
+            <EditText
+                android:layout_width="50dp"
+                android:layout_height="wrap_content"
+                android:inputType="number"
+                android:ems="10"
+                android:id="@+id/brushWidthEditText"
+                android:layout_gravity="right"
+                android:alpha="0.5"
+                android:numeric="integer" />
+
+        </LinearLayout>
+
 </LinearLayout>
+
+</RelativeLayout>

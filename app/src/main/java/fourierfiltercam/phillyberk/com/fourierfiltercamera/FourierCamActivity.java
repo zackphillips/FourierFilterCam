@@ -1,6 +1,5 @@
 package fourierfiltercam.phillyberk.com.fourierfiltercamera;
 
-import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
@@ -14,6 +13,7 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnTouchListener;
 import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
@@ -61,15 +61,19 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
     private ImageButton fourierButton;
     private ImageButton inverseFourierButton;
+    private Button eraseFilterButton;
+    private Button invertFilterButton;
 
     private List<Mat> rgbChannels;
     private List<Mat> rgbaChannels;
+    private int resolutionValue = 5;
 
     private float mX, mY;
     private static final float TOUCH_TOLERANCE = 4;
     int pointerSize = 10;
 
     private Mat touchMask;
+
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -111,16 +115,37 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         // Set up buttons
         fourierButton = (ImageButton) findViewById(R.id.fourierTransformButton);
         inverseFourierButton = (ImageButton) findViewById(R.id.inverseFourierTransformButton);
+        eraseFilterButton = (Button) findViewById(R.id.clearFilterButton);
+        invertFilterButton = (Button) findViewById(R.id.invertFilterButton);
+
+        fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
+        inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
+
+        eraseFilterButton.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), touchMask.type());
+            }
+        });
+
+        invertFilterButton.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+                Core.subtract(Mat.ones(touchMask.rows(), touchMask.cols(), touchMask.type()), touchMask, touchMask);
+            }
+        });
 
         fourierButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
                 dftFlag = true;
+                fourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
+                inverseFourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
             }
         });
 
         inverseFourierButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
                 dftFlag = false;
+                fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
+                inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
             }
         });
 
@@ -147,7 +172,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
     public void onCameraViewStarted(int width, int height) {
         mResolutionList = mOpenCvCameraView.getResolutionList();
-        Size resolution = mResolutionList.get(4);
+        Size resolution = mResolutionList.get(resolutionValue);
         mOpenCvCameraView.setResolution(resolution);
         height = resolution.height;
         width = resolution.width;
@@ -276,6 +301,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         magImg = fftShift(magImg);
 
         Core.normalize(magImg, magImg, 0, 255, Core.NORM_MINMAX);
+        magImg = magImg.mul(touchMask); // Apply filtering
         magImg.convertTo(imgUint, CvType.CV_8UC1);
 
         // Release Matricies
@@ -283,6 +309,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         complexPlanes.get(1).release();
         imGray.release();
         complexI.release();
+        magImg.release();
 
         return imgUint;
     }
@@ -394,16 +421,17 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         shift3.copyTo(new Mat(result, new Rect(shiftR, 0, w - shiftR, shiftD)));
         shift4.copyTo(new Mat(result, new Rect(0, 0, shiftR, shiftD)));
 
+        shift1.release();
+        shift2.release();
+        shift3.release();
+        shift4.release();
+
         return result;
     }
 
 
     private void touch_start(float x, float y) {
-        mX = x;
-        mY = y;
-        Point touchPoint = new Point(x, y);
-        Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
-        Log.i("TOUCHTEST", "START DRAWING");
+
     }
 
     private void touch_move(float x, float y) {
@@ -418,50 +446,52 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         }
     }
 
-    private void touch_up() {
-        Log.i("TOUCHTEST", "DONE DRAWING");
-    }
-
-    @SuppressLint("SimpleDateFormat")
+    //@SuppressLint("SimpleDateFormat")
     @Override
     public boolean onTouch(View v, MotionEvent event) {
 
-        // Scale point position to mat size
-        int pointX = (int) (event.getX() * ((float) touchMask.cols() / (float) v.getWidth()));
-        int pointY = (int) (event.getY() * ((float) touchMask.rows() / (float) v.getHeight()));
+        // Only respond to touches if we're viewing the fft
+        if (dftFlag) {
+            // Scale point position to mat size
+            int pointX = (int) (event.getX() * ((float) touchMask.cols() / (float) v.getWidth()));
+            int pointY = (int) (event.getY() * ((float) touchMask.rows() / (float) v.getHeight()));
+            Point touchPoint = new Point(pointX, pointY);
 
-        //Point touchPoint = new Point(pointX, pointY);
-        //Core.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
-
-        Log.i("TOUCHTEST", String.format("event type: %d", event.getActionMasked()));
-
-        switch (event.getActionMasked()) {
-            case MotionEvent.ACTION_DOWN: {
-                touch_start(pointX, pointY);
-                return true;
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN: {
+                    mX = pointX;
+                    mY = pointY;
+                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                    return true;
+                }
+                case MotionEvent.ACTION_MOVE: {
+                    float dx = Math.abs(pointX - mX);
+                    float dy = Math.abs(pointY - mY);
+                    if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE) {
+                        mX = pointX;
+                        mY = pointY;
+                        Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                    }
+                    return true;
+                }
+                case MotionEvent.ACTION_UP: {
+                    return false;
+                }
+                default:
+                    return false;
             }
-            case MotionEvent.ACTION_MOVE: {
-                touch_move(pointX, pointY);
-                return true;
-            }
-            case MotionEvent.ACTION_UP: {
-                touch_up();
-                return false;
-            }
-            default:
-                return false;
         }
-
-
-
-        /*
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
-        String currentDateandTime = sdf.format(new Date());
-        String fileName = Environment.getExternalStorageDirectory().getPath() +
-                               "/sample_picture_" + currentDateandTime + ".jpg";
-        mOpenCvCameraView.takePicture(fileName);
-        Toast.makeText(this, fileName + " saved", Toast.LENGTH_SHORT).show();
-        */
-
+        return true;
     }
 }
+
+
+// Code to take a picture and save to SD
+/*
+SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+String currentDateandTime = sdf.format(new Date());
+String fileName = Environment.getExternalStorageDirectory().getPath() +
+                       "/sample_picture_" + currentDateandTime + ".jpg";
+mOpenCvCameraView.takePicture(fileName);
+Toast.makeText(this, fileName + " saved", Toast.LENGTH_SHORT).show();
+*/
