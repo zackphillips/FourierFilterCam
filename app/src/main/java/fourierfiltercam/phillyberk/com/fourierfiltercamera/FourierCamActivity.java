@@ -1,9 +1,12 @@
 package fourierfiltercam.phillyberk.com.fourierfiltercamera;
 
 import android.app.Activity;
+import android.app.Application;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
@@ -13,8 +16,13 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnTouchListener;
 import android.view.WindowManager;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.Spinner;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -29,8 +37,11 @@ import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
+import org.opencv.imgproc.Imgproc;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.ListIterator;
 
@@ -54,6 +65,9 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private int dftCols;
     private int imgXSize;
     private int imgYSize;
+    private int imgCenterX;
+    private int imgCenterY;
+
     private List<Mat> complexPlanes;
     private List<Mat> filterPlanes;
     private Mat imgFloat;
@@ -65,15 +79,33 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private Button invertFilterButton;
 
     private List<Mat> rgbChannels;
-    private List<Mat> rgbaChannels;
-    private int resolutionValue = 5;
+    private int resolutionValue = 7;
+
+    private Spinner filterListSpinner;
+    private EditText brushWidthEditText;
 
     private float mX, mY;
+
+    // Parameters to tweak
     private static final float TOUCH_TOLERANCE = 4;
     int pointerSize = 10;
+    private int annulusWidth = 20;
+
+    private int defaultTouchPointX = 40;
+    private int defaultTouchPointY = 40;
 
     private Mat touchMask;
 
+    private int filterType = 0;
+    private boolean filterInverted = false;
+
+    // Filter Mode constants (same order as array defined in strings.xml)
+    private static final int FILTER_MODE_FREEFORM = 0;
+    private static final int FILTER_MODE_BOX = 1;
+    private static final int FILTER_MODE_HALFBOX = 2;
+    private static final int FILTER_MODE_CIRCLE = 3;
+    private static final int FILTER_MODE_HALFCIRCLE = 4;
+    private static final int FILTER_MODE_ANNULUS = 5;
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -117,9 +149,37 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         inverseFourierButton = (ImageButton) findViewById(R.id.inverseFourierTransformButton);
         eraseFilterButton = (Button) findViewById(R.id.clearFilterButton);
         invertFilterButton = (Button) findViewById(R.id.invertFilterButton);
-
         fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
         inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
+
+        // Set up default filter spinner
+        filterListSpinner = (Spinner) findViewById(R.id.filterListSpinner);
+        // Create an ArrayAdapter using the string array and a default spinner layout
+        ArrayAdapter<CharSequence> adapter = ArrayAdapter.createFromResource(this,
+                R.array.filter_array, android.R.layout.simple_spinner_item);
+        // Specify the layout to use when the list of choices appears
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        // Apply the adapter to the spinner
+        filterListSpinner.setAdapter(adapter);
+
+        filterListSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                Log.d("SPINNER", Integer.toString(position));
+
+                if (position <= 5 && position >= 0) {
+                    filterType = position;
+                    // Draw default fikt
+                    if (filterType != FILTER_MODE_FREEFORM)
+                        drawFilterType(new Point(imgCenterX + defaultTouchPointX, imgCenterY + defaultTouchPointY));
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+
+            }
+        });
 
         eraseFilterButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
@@ -129,7 +189,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
         invertFilterButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
-                Core.subtract(Mat.ones(touchMask.rows(), touchMask.cols(), touchMask.type()), touchMask, touchMask);
+                filterInverted = !filterInverted;
+                invertFilter();
             }
         });
 
@@ -171,15 +232,29 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     }
 
     public void onCameraViewStarted(int width, int height) {
+        // Set default resolution
         mResolutionList = mOpenCvCameraView.getResolutionList();
         Size resolution = mResolutionList.get(resolutionValue);
         mOpenCvCameraView.setResolution(resolution);
-        height = resolution.height;
-        width = resolution.width;
+        changeVariableSizes();
+    }
 
+    public void onCameraViewStopped() {
+    }
+
+    public void changeVariableSizes() {
+
+        Size resolution = mOpenCvCameraView.getResolution();
         // Now that we know the image size, set up variables
+
+        int height = resolution.height;
+        int width = resolution.width;
+
         imgXSize = width;
         imgYSize = height;
+
+        imgCenterX = (int) Math.round(imgXSize / 2.0);
+        imgCenterY = (int) Math.round(imgYSize / 2.0);
 
         dftRows = Core.getOptimalDFTSize(imgYSize);
         dftCols = Core.getOptimalDFTSize(imgXSize); // on the border
@@ -198,12 +273,12 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         imgUint = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC1);
 
         complexPlanes = new ArrayList<Mat>();
-        complexPlanes.add(magImg);
-        complexPlanes.add(magImg);
+        complexPlanes.add(imgFloat);
+        complexPlanes.add(imgFloat);
 
         filterPlanes = new ArrayList<Mat>();
-        filterPlanes.add(magImg);
-        filterPlanes.add(magImg);
+        filterPlanes.add(imgFloat);
+        filterPlanes.add(imgFloat);
 
         returnMat = Mat.zeros(zeroPadded.rows(), zeroPadded.cols(), CvType.CV_8UC3);
 
@@ -212,28 +287,18 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         rgbChannels.add(imgUint);
         rgbChannels.add(imgUint);
 
-        rgbaChannels = new ArrayList<Mat>();
-        rgbaChannels.add(imgUint);
-        rgbaChannels.add(imgUint);
-
-
         touchMask = Mat.ones(height, width, CvType.CV_32FC1);
     }
 
-    public void onCameraViewStopped() {
-    }
-
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
+
         if (dftFlag) // Display Fourier Transform of Image
         {
             Contrib.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Contrib.COLORMAP_JET);
-
-        }
-
-        else // Display Filtered Image
+        } else // Display Filtered Image
             returnMat = applyFourierFilter(inputFrame.rgba());
 
-        Log.i("TEMPTEST", String.format("returnMat type: %d", returnMat.type()));
+        //returnMat = inputFrame.rgba(); // for rar stream
         // Type is 24 - 8UC4
         return returnMat;
     }
@@ -284,32 +349,33 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             Size resolution = mResolutionList.get(id);
             mOpenCvCameraView.setResolution(resolution);
             resolution = mOpenCvCameraView.getResolution();
-            String caption = Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString();
+            String caption = Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString() + "(val: " + Integer.valueOf(id).toString() + ")";
             Toast.makeText(this, caption, Toast.LENGTH_SHORT).show();
+            changeVariableSizes();
         }
 
         return true;
     }
 
     private Mat fftMagnitude(Mat imGray) {
-        imGray.convertTo(imGray, CvType.CV_32FC1);
+        imGray.convertTo(imGray, CvType.CV_32FC1); // Convert to Floating Point
 
         Core.dft(imGray, complexI, Core.DFT_COMPLEX_OUTPUT, imGray.rows());
         Core.split(complexI, complexPlanes);
-        Core.magnitude(complexPlanes.get(0), complexPlanes.get(1), magImg);
-        Core.log(magImg, magImg);
-        magImg = fftShift(magImg);
+        Core.magnitude(complexPlanes.get(0), complexPlanes.get(1), imgFloat);
+        Core.log(imgFloat, imgFloat);
+        imgFloat = fftShift(imgFloat);
 
-        Core.normalize(magImg, magImg, 0, 255, Core.NORM_MINMAX);
-        magImg = magImg.mul(touchMask); // Apply filtering
-        magImg.convertTo(imgUint, CvType.CV_8UC1);
+        Core.normalize(imgFloat, imgFloat, 0, 255, Core.NORM_MINMAX);
+        imgFloat = imgFloat.mul(touchMask); // Apply filtering
+        imgFloat.convertTo(imgUint, CvType.CV_8UC1);
 
         // Release Matricies
         complexPlanes.get(0).release();
         complexPlanes.get(1).release();
         imGray.release();
         complexI.release();
-        magImg.release();
+        imgFloat.release();
 
         return imgUint;
     }
@@ -317,11 +383,10 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private Mat applyFourierFilter(Mat imRgb) {
         imRgb.convertTo(imRgb, CvType.CV_32FC3); // convert to floating-point
 
-        //Imgproc.copyMakeBorder(imGray, zeroPadded, 0, imgYSize - imGray.rows(), 0,
-        //        imgXSize - imGray.cols(), Imgproc.BORDER_CONSTANT);
+        //ImgProc.copyMakeBorder(imRgb, zeroPadded, 0, imgYSize - imRgb.rows(), 0,
+        //        imgXSize - imRgb.cols(), ImgProc.BORDER_CONSTANT);
 
         //zeroPadded = Mat.zeros(imRgb.rows(),imRgb.cols(),CvType.CV_32FC1);
-
 
         Core.split(imRgb, rgbChannels);
 
@@ -341,20 +406,19 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             Core.mulSpectrums(complexI, complexFilter, complexI, 1);
             Core.idft(complexI, imgFloat, Core.DFT_REAL_OUTPUT, imgFloat.rows());
             rgbChannels.set(ch, imgFloat);
-
         }
 
         // Combine Color Channels
         Core.merge(rgbChannels, imRgb);
 
-        // Normalize to uint8
+        // Normalize and scale to uint8
         Core.normalize(imRgb, imRgb, 0, 255, Core.NORM_MINMAX);
         imRgb.convertTo(imRgb, CvType.CV_8UC3);
 
         // Release Matricies
         complexPlanes.get(0).release();
         complexPlanes.get(1).release();
-        filterPlanes.get(1).release();
+        filterPlanes.get(0).release();
         filterPlanes.get(1).release();
         complexFilter.release();
         rgbChannels.get(0).release();
@@ -416,6 +480,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             | 2 |    1    |
             |___|_________|
          */
+
         shift1.copyTo(new Mat(result, new Rect(shiftR, shiftD, w - shiftR, h - shiftD)));
         shift2.copyTo(new Mat(result, new Rect(0, shiftD, shiftR, h - shiftD)));
         shift3.copyTo(new Mat(result, new Rect(shiftR, 0, w - shiftR, shiftD)));
@@ -429,69 +494,150 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         return result;
     }
 
-
-    private void touch_start(float x, float y) {
-
+    private void invertFilter() {
+        Core.subtract(Mat.ones(touchMask.rows(), touchMask.cols(), touchMask.type()), touchMask, touchMask);
     }
 
-    private void touch_move(float x, float y) {
-        Log.i("TOUCHTEST", "MOVE DRAWING");
-        float dx = Math.abs(x - mX);
-        float dy = Math.abs(y - mY);
-        if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE) {
-            mX = x;
-            mY = y;
-            Point touchPoint = new Point(x, y);
-            Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+    private void drawFilterType(Point touchPoint) {
+        switch (filterType) {
+            case FILTER_MODE_FREEFORM: {
+                // Draw a circle at pointer
+                if (filterInverted)
+                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
+                else
+                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                break;
+            }
+            case FILTER_MODE_BOX: {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
+                // Calculate x and y of corner
+                float rx = Math.abs((float) touchPoint.x - (float) imgCenterX);
+                float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
+
+                Point corner1 = new Point(imgCenterX + rx, imgCenterY + ry);
+                Point corner2 = new Point(imgCenterX - rx, imgCenterY - ry);
+                Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
+
+                if (filterInverted)
+                    invertFilter();
+                break;
+            }
+            case FILTER_MODE_HALFBOX: {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
+                // Calculate x and y of corner
+                float rx = Math.abs((float) touchPoint.x - (float) imgCenterX);
+                float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
+
+                Point corner1 = new Point(imgCenterX + rx, imgCenterY + ry);
+                Point corner2 = new Point(imgCenterX, imgCenterY - ry);
+                Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
+
+                if (filterInverted)
+                    invertFilter();
+                break;
+            }
+            case FILTER_MODE_CIRCLE: {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
+                float rx = Math.abs((float) touchPoint.x - (float) imgCenterX);
+                float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
+
+                double radius = Math.sqrt(rx * rx + ry * ry);
+                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
+
+
+                if (filterInverted)
+                    invertFilter();
+                break;
+            }
+            case FILTER_MODE_HALFCIRCLE: {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
+                float rx = Math.abs((float) touchPoint.x - (float) imgCenterX);
+                float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
+
+                double radius = Math.max(Math.sqrt(rx * rx + ry * ry), 0);
+                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
+
+                // Clear half of the circle
+                Point corner1 = new Point(imgCenterX, 0);
+                Point corner2 = new Point(imgXSize, imgYSize);
+                Core.rectangle(touchMask, corner1, corner2, new Scalar(1), -1);
+
+                if (filterInverted)
+                    invertFilter();
+
+                break;
+            }
+            case FILTER_MODE_ANNULUS: {
+                touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
+                float rx = Math.abs((float) touchPoint.x - (float) imgCenterX);
+                float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
+
+                double radiusOut = Math.max(Math.sqrt(rx * rx + ry * ry), 0);
+                double radiusIn = radiusOut - annulusWidth;
+
+                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusOut), new Scalar(0), -1);
+                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusIn), new Scalar(1), -1);
+
+                if (filterInverted)
+                    invertFilter();
+                break;
+            }
+            default:
+                break;
         }
     }
+
 
     //@SuppressLint("SimpleDateFormat")
     @Override
     public boolean onTouch(View v, MotionEvent event) {
 
-        // Only respond to touches if we're viewing the fft
-        if (dftFlag) {
-            // Scale point position to mat size
-            int pointX = (int) (event.getX() * ((float) touchMask.cols() / (float) v.getWidth()));
-            int pointY = (int) (event.getY() * ((float) touchMask.rows() / (float) v.getHeight()));
-            Point touchPoint = new Point(pointX, pointY);
+        int pointX = (int) (event.getX() * ((float) touchMask.cols() / (float) v.getWidth()));
+        int pointY = (int) (event.getY() * ((float) touchMask.rows() / (float) v.getHeight()));
+        Point touchPoint = new Point(pointX, pointY);
 
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: {
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN: {
+                if (dftFlag) {
                     mX = pointX;
                     mY = pointY;
-                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
-                    return true;
-                }
-                case MotionEvent.ACTION_MOVE: {
+                    drawFilterType(touchPoint);
+                    //Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                } else
+                    takePicture();
+                return true;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                if (dftFlag) {
+                    //drawFilterType(touchPoint);
                     float dx = Math.abs(pointX - mX);
                     float dy = Math.abs(pointY - mY);
                     if (dx >= TOUCH_TOLERANCE || dy >= TOUCH_TOLERANCE) {
                         mX = pointX;
                         mY = pointY;
-                        Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                        drawFilterType(touchPoint);
                     }
                     return true;
-                }
-                case MotionEvent.ACTION_UP: {
-                    return false;
-                }
-                default:
-                    return false;
+                } else
+                    break;
+
             }
+            case MotionEvent.ACTION_UP: {
+                return false;
+            }
+            default:
+                return false;
         }
         return true;
     }
+
+    // Code to take a picture and save to SD
+    void takePicture() {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+        String currentDateandTime = sdf.format(new Date());
+        String fileName = Environment.getExternalStorageDirectory().getPath() +
+                "/sample_picture_" + currentDateandTime + ".jpg";
+        mOpenCvCameraView.takePicture(fileName);
+        Toast.makeText(this, "Saved picture as " + fileName, Toast.LENGTH_SHORT).show();
+    }
 }
-
-
-// Code to take a picture and save to SD
-/*
-SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
-String currentDateandTime = sdf.format(new Date());
-String fileName = Environment.getExternalStorageDirectory().getPath() +
-                       "/sample_picture_" + currentDateandTime + ".jpg";
-mOpenCvCameraView.takePicture(fileName);
-Toast.makeText(this, fileName + " saved", Toast.LENGTH_SHORT).show();
-*/

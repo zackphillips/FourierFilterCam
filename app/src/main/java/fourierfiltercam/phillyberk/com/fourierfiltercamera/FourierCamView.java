@@ -8,13 +8,14 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import org.opencv.android.JavaCameraView;
+import org.opencv.android.NativeCameraView;
 
 import java.io.FileOutputStream;
 import java.util.List;
 
 public class FourierCamView extends JavaCameraView implements PictureCallback {
 
-    private static final String TAG = "Sample::Tutorial3View";
+    private static final String TAG = "FourierFilterCam::View";
     private String mPictureFileName;
 
     public FourierCamView(Context context, AttributeSet attrs) {
@@ -80,7 +81,7 @@ public class FourierCamView extends JavaCameraView implements PictureCallback {
             fos.close();
 
         } catch (java.io.IOException e) {
-            Log.e("PictureDemo", "Exception in photoCallback", e);
+            Log.e("TakePicture", "Exception in photoCallback", e);
         }
 
     }

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fourier Filter Cam</string>
+    <string-array name="filter_array">
+        <item>Free-Form</item>
+        <item>Box</item>
+        <item>Half Box</item>
+        <item>Circle</item>
+        <item>Half Circle</item>
+        <item>Annulus</item>
+    </string-array>
+</resources>
