@@ -4,6 +4,7 @@
     android:layout_height="match_parent"
     android:keepScreenOn="true">
 
+
     <fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamView
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -12,28 +13,31 @@
 
     <ImageButton
         android:id="@+id/fourierTransformButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:background="@null"
+        android:layout_width="170dp"
+        android:layout_height="170dp"
+        android:scaleX="0.5"
+        android:scaleY="0.5"
         android:layout_alignParentBottom="true"
         android:layout_alignParentLeft="true"
-        android:maxHeight="80dp"
-        android:maxWidth="80dp"
-        android:minHeight="80dp"
-        android:minWidth="80dp"
-        android:visibility="invisible" />
+        android:visibility="invisible"
+        android:src="@drawable/fourier"
+        android:alpha="0.5"
+        android:scaleType="center" />
 
     <ImageButton
         android:id="@+id/inverseFourierTransformButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:background="@null"
+        android:layout_width="170dp"
+        android:layout_height="170dp"
         android:layout_alignParentBottom="true"
         android:layout_alignParentLeft="true"
-        android:text="Setup"
-        android:minHeight="80dp"
-        android:minWidth="80dp"
-        android:maxWidth="80dp"
-        android:maxHeight="80dp"
-        android:visibility="visible" />
+        android:scaleX="0.5"
+        android:scaleY="0.5"
+        android:visibility="visible"
+        android:src="@drawable/inversefourier"
+        android:alpha="0.5"
+        android:scaleType="center" />
 
 
     <Button
