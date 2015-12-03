@@ -44,7 +44,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentBottom="true"
-        android:layout_alignParentRight="true"
+        android:layout_toLeftOf="@+id/settingsButton"
         android:text="Clear Filter"
         android:id="@+id/clearFilterButton"
         android:layout_weight="0" />
@@ -57,6 +57,15 @@
         android:id="@+id/invertFilterButton"
         android:layout_toLeftOf="@+id/clearFilterButton"
         android:layout_weight="0.1" />
+
+    <Button
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_alignParentRight="true"
+        android:text="Settings"
+        android:id="@+id/settingsButton"
+        android:layout_weight="0" />
 
 
     <LinearLayout
@@ -74,26 +83,6 @@
                 android:id="@+id/filterListSpinner"
                 android:spinnerMode="dropdown" />
 
-            <TextView
-                android:id="@+id/brushWidthLabel"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="0.52"
-                android:gravity="right|end"
-                android:paddingLeft="10dp"
-                android:text="Brush Width"
-                android:textAppearance="?android:attr/textAppearanceSmall"
-                android:paddingRight="10dp" />
-
-            <EditText
-                android:layout_width="50dp"
-                android:layout_height="wrap_content"
-                android:inputType="number"
-                android:ems="10"
-                android:id="@+id/brushWidthEditText"
-                android:layout_gravity="right"
-                android:alpha="0.5"
-                android:numeric="integer" />
 
         </LinearLayout>
 

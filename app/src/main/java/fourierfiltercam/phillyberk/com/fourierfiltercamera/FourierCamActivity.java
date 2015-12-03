@@ -1,12 +1,12 @@
 package fourierfiltercam.phillyberk.com.fourierfiltercamera;
 
+import fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamSettingsDialog;
+import fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamSettingsDialog.NoticeDialogListener;
 import android.app.Activity;
-import android.app.Application;
 import android.hardware.Camera.Size;
 import android.os.Bundle;
 import android.os.Environment;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
@@ -19,10 +19,8 @@ import android.view.WindowManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.Spinner;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import org.opencv.android.BaseLoaderCallback;
@@ -44,16 +42,14 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.ListIterator;
+import android.app.DialogFragment;
 
-public class FourierCamActivity extends Activity implements CvCameraViewListener2, OnTouchListener {
+public class FourierCamActivity extends Activity implements CvCameraViewListener2, OnTouchListener, NoticeDialogListener {
     private static final String TAG = "FourierFilterCam::Act";
 
     private FourierCamView mOpenCvCameraView;
     private List<Size> mResolutionList;
-    private MenuItem[] mEffectMenuItems;
-    private SubMenu mColorEffectsMenu;
-    private MenuItem[] mResolutionMenuItems;
-    private SubMenu mResolutionMenu;
+
     private boolean dftFlag = false;
     private Mat zeroPadded;
     private Mat complexI;
@@ -67,29 +63,33 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private int imgYSize;
     private int imgCenterX;
     private int imgCenterY;
+    float aspectRatio;
 
     private List<Mat> complexPlanes;
     private List<Mat> filterPlanes;
     private Mat imgFloat;
     private Mat imgUint;
+    private Mat kernel;
 
     private ImageButton fourierButton;
     private ImageButton inverseFourierButton;
     private Button eraseFilterButton;
     private Button invertFilterButton;
+    private Button settingsButton;
 
     private List<Mat> rgbChannels;
-    private int resolutionValue = 7;
+    private int resolutionValue = 6;
 
     private Spinner filterListSpinner;
-    private EditText brushWidthEditText;
 
     private float mX, mY;
+    private String [] mResolutionListString;
 
     // Parameters to tweak
     private static final float TOUCH_TOLERANCE = 4;
     int pointerSize = 10;
     private int annulusWidth = 20;
+    private int blurSize = 10;
 
     private int defaultTouchPointX = 40;
     private int defaultTouchPointY = 40;
@@ -106,6 +106,12 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     private static final int FILTER_MODE_CIRCLE = 3;
     private static final int FILTER_MODE_HALFCIRCLE = 4;
     private static final int FILTER_MODE_ANNULUS = 5;
+
+    private boolean colorFilterFlag = false;
+    private boolean isotropicFilterFlag = false;
+
+    private FourierCamSettingsDialog settingsDialog;
+    private DialogFragment settingsDialogFragment;
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -144,13 +150,19 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
 
+        settingsDialogFragment = new FourierCamSettingsDialog();
+
+        // Populate resolution list for settings menu
+
         // Set up buttons
         fourierButton = (ImageButton) findViewById(R.id.fourierTransformButton);
         inverseFourierButton = (ImageButton) findViewById(R.id.inverseFourierTransformButton);
         eraseFilterButton = (Button) findViewById(R.id.clearFilterButton);
         invertFilterButton = (Button) findViewById(R.id.invertFilterButton);
+        settingsButton = (Button) findViewById(R.id.settingsButton);
         fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
         inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
+        settingsButton = (Button) findViewById(R.id.settingsButton);
 
         // Set up default filter spinner
         filterListSpinner = (Spinner) findViewById(R.id.filterListSpinner);
@@ -181,9 +193,17 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             }
         });
 
+
         eraseFilterButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
                 touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), touchMask.type());
+                filterInverted = false;
+            }
+        });
+
+        settingsButton.setOnClickListener(new OnClickListener() {
+            public void onClick(View v) {
+                openSettingsDialog();
             }
         });
 
@@ -197,16 +217,19 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         fourierButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
                 dftFlag = true;
-                fourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
-                inverseFourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
+                fourierButton.setVisibility(View.INVISIBLE);
+                inverseFourierButton.setVisibility(View.VISIBLE);
+                filterListSpinner.setVisibility(View.VISIBLE);
+                filterListSpinner.setVisibility(View.VISIBLE);
             }
         });
 
         inverseFourierButton.setOnClickListener(new OnClickListener() {
             public void onClick(View v) {
                 dftFlag = false;
-                fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
-                inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
+                fourierButton.setVisibility(View.VISIBLE);
+                inverseFourierButton.setVisibility(View.INVISIBLE);
+                filterListSpinner.setVisibility(View.GONE);
             }
         });
 
@@ -232,23 +255,39 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     }
 
     public void onCameraViewStarted(int width, int height) {
-        // Set default resolution
+
         mResolutionList = mOpenCvCameraView.getResolutionList();
+        mResolutionListString = new String[mResolutionList.size()];
+        filterListSpinner.setVisibility(mOpenCvCameraView.INVISIBLE);
+
+        ListIterator<Size> resolutionItr = mResolutionList.listIterator();
+        int idx = 0;
+        while (resolutionItr.hasNext()) {
+            Size element = resolutionItr.next();
+            mResolutionListString[idx] = Integer.valueOf(element.width).toString() + "x" + Integer.valueOf(element.height).toString();
+            idx++;
+        }
+        resolutionValue = idx-2;
+        // Set default resolution
         Size resolution = mResolutionList.get(resolutionValue);
         mOpenCvCameraView.setResolution(resolution);
         changeVariableSizes();
+
+        filterListSpinner.setVisibility(View.GONE);
     }
 
     public void onCameraViewStopped() {
     }
 
-    public void changeVariableSizes() {
-
+    public void changeVariableSizes()
+    {
         Size resolution = mOpenCvCameraView.getResolution();
-        // Now that we know the image size, set up variables
 
         int height = resolution.height;
         int width = resolution.width;
+
+        pointerSize = height / 30;
+        blurSize = pointerSize / 4;
 
         imgXSize = width;
         imgYSize = height;
@@ -288,74 +327,26 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         rgbChannels.add(imgUint);
 
         touchMask = Mat.ones(height, width, CvType.CV_32FC1);
+
+        aspectRatio = (float)imgXSize / (float)imgYSize;
     }
 
-    public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
+    public Mat onCameraFrame(CvCameraViewFrame inputFrame)
+    {
 
         if (dftFlag) // Display Fourier Transform of Image
         {
             Contrib.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Contrib.COLORMAP_JET);
-        } else // Display Filtered Image
-            returnMat = applyFourierFilter(inputFrame.rgba());
+        } else {
+            if (colorFilterFlag)
+                returnMat = applyFourierFilter(inputFrame.rgba());
+            else
+                returnMat = applyFourierFilterGray(inputFrame.gray());
+        }
 
-        //returnMat = inputFrame.rgba(); // for rar stream
-        // Type is 24 - 8UC4
         return returnMat;
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        List<String> effects = mOpenCvCameraView.getEffectList();
-
-        if (effects == null) {
-            Log.e(TAG, "Color effects are not supported by device!");
-            return true;
-        }
-
-        mColorEffectsMenu = menu.addSubMenu("Color Effect");
-        mEffectMenuItems = new MenuItem[effects.size()];
-
-        int idx = 0;
-        ListIterator<String> effectItr = effects.listIterator();
-        while (effectItr.hasNext()) {
-            String element = effectItr.next();
-            mEffectMenuItems[idx] = mColorEffectsMenu.add(1, idx, Menu.NONE, element);
-            idx++;
-        }
-
-        mResolutionMenu = menu.addSubMenu("Resolution");
-        mResolutionList = mOpenCvCameraView.getResolutionList();
-        mResolutionMenuItems = new MenuItem[mResolutionList.size()];
-
-        ListIterator<Size> resolutionItr = mResolutionList.listIterator();
-        idx = 0;
-        while (resolutionItr.hasNext()) {
-            Size element = resolutionItr.next();
-            mResolutionMenuItems[idx] = mResolutionMenu.add(2, idx, Menu.NONE,
-                    Integer.valueOf(element.width).toString() + "x" + Integer.valueOf(element.height).toString());
-            idx++;
-        }
-
-        return true;
-    }
-
-    public boolean onOptionsItemSelected(MenuItem item) {
-        Log.i(TAG, "called onOptionsItemSelected; selected item: " + item);
-        if (item.getGroupId() == 1) {
-            mOpenCvCameraView.setEffect((String) item.getTitle());
-            Toast.makeText(this, mOpenCvCameraView.getEffect(), Toast.LENGTH_SHORT).show();
-        } else if (item.getGroupId() == 2) {
-            int id = item.getItemId();
-            Size resolution = mResolutionList.get(id);
-            mOpenCvCameraView.setResolution(resolution);
-            resolution = mOpenCvCameraView.getResolution();
-            String caption = Integer.valueOf(resolution.width).toString() + "x" + Integer.valueOf(resolution.height).toString() + "(val: " + Integer.valueOf(id).toString() + ")";
-            Toast.makeText(this, caption, Toast.LENGTH_SHORT).show();
-            changeVariableSizes();
-        }
-
-        return true;
-    }
 
     private Mat fftMagnitude(Mat imGray) {
         imGray.convertTo(imGray, CvType.CV_32FC1); // Convert to Floating Point
@@ -389,8 +380,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         //zeroPadded = Mat.zeros(imRgb.rows(),imRgb.cols(),CvType.CV_32FC1);
 
         Core.split(imRgb, rgbChannels);
-
-        Mat touchMaskShifted = fftShift(touchMask);
+        Imgproc.blur(touchMask, imgFloat, new org.opencv.core.Size(blurSize, blurSize));
+        Mat touchMaskShifted = fftShift(imgFloat);
         touchMaskShifted.convertTo(touchMaskShifted, CvType.CV_32FC1);
 
         filterPlanes.set(0, touchMaskShifted);
@@ -430,16 +421,52 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         return imRgb;
     }
 
+    private Mat applyFourierFilterGray(Mat imGray) {
+        imGray.convertTo(imGray, CvType.CV_32FC1); // convert to floating-point
+
+        //ImgProc.copyMakeBorder(imRgb, zeroPadded, 0, imgYSize - imRgb.rows(), 0,
+        //        imgXSize - imRgb.cols(), ImgProc.BORDER_CONSTANT);
+
+        //zeroPadded = Mat.zeros(imRgb.rows(),imRgb.cols(),CvType.CV_32FC1);
+
+        Imgproc.blur(touchMask,imgFloat,new org.opencv.core.Size(blurSize,blurSize));
+        Mat touchMaskShifted = fftShift(imgFloat);
+        touchMaskShifted.convertTo(touchMaskShifted, CvType.CV_32FC1);
+
+        filterPlanes.set(0, touchMaskShifted);
+        filterPlanes.set(1, Mat.zeros(touchMaskShifted.rows(), touchMaskShifted.cols(), touchMaskShifted.type()));
+        Core.merge(filterPlanes, complexFilter);
+
+        Core.dft(imGray, complexI, Core.DFT_COMPLEX_OUTPUT, imgFloat.rows());
+        Core.mulSpectrums(complexI, complexFilter, complexI, 1);
+        Core.idft(complexI, imGray, Core.DFT_REAL_OUTPUT, imgFloat.rows());
+
+        // Normalize and scale to uint8
+        Core.normalize(imGray, imGray, 0, 255, Core.NORM_MINMAX);
+        imGray.convertTo(imGray, CvType.CV_8UC1);
+
+        // Release Matricies
+        filterPlanes.get(0).release();
+        filterPlanes.get(1).release();
+        complexFilter.release();
+        complexI.release();
+
+        return imGray;
+    }
+
 
     public static Mat fftShift(Mat inMat) {
         return circularShift(inMat, (int) java.lang.Math.ceil((double) inMat.cols() / 2.0),
                 (int) java.lang.Math.ceil((double) inMat.rows() / 2.0));
     }
 
+    /*
     public static Mat ifftShift(Mat inMat) {
         return circularShift(inMat, (int) java.lang.Math.floor((double) inMat.cols() / 2.0),
                 (int) java.lang.Math.floor((double) inMat.rows() / 2.0));
     }
+    */
+
 
     public static Mat circularShift(Mat mat, int x, int y) {
         int w = mat.cols();
@@ -518,8 +545,6 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 Point corner2 = new Point(imgCenterX - rx, imgCenterY - ry);
                 Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
 
-                if (filterInverted)
-                    invertFilter();
                 break;
             }
             case FILTER_MODE_HALFBOX: {
@@ -532,8 +557,6 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 Point corner2 = new Point(imgCenterX, imgCenterY - ry);
                 Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
 
-                if (filterInverted)
-                    invertFilter();
                 break;
             }
             case FILTER_MODE_CIRCLE: {
@@ -544,9 +567,6 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 double radius = Math.sqrt(rx * rx + ry * ry);
                 Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
 
-
-                if (filterInverted)
-                    invertFilter();
                 break;
             }
             case FILTER_MODE_HALFCIRCLE: {
@@ -562,9 +582,6 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 Point corner2 = new Point(imgXSize, imgYSize);
                 Core.rectangle(touchMask, corner1, corner2, new Scalar(1), -1);
 
-                if (filterInverted)
-                    invertFilter();
-
                 break;
             }
             case FILTER_MODE_ANNULUS: {
@@ -575,18 +592,28 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 double radiusOut = Math.max(Math.sqrt(rx * rx + ry * ry), 0);
                 double radiusIn = radiusOut - annulusWidth;
 
-                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusOut), new Scalar(0), -1);
-                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusIn), new Scalar(1), -1);
+               // if (useRealFourierCoverage) {
+               //     Core.el
+               // }else{
+                    Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusOut), new Scalar(0), -1);
+                    Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusIn), new Scalar(1), -1);
+                //}
 
-                if (filterInverted)
-                    invertFilter();
                 break;
             }
             default:
                 break;
+
+
+        }
+
+        // Apply Windowing Function
+        if (filterType != FILTER_MODE_FREEFORM) {
+            //Imgproc.filter2D(touchMask, touchMask, CvType.CV_32F, kernel);
+            if (filterInverted)
+                invertFilter();
         }
     }
-
 
     //@SuppressLint("SimpleDateFormat")
     @Override
@@ -640,4 +667,54 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         mOpenCvCameraView.takePicture(fileName);
         Toast.makeText(this, "Saved picture as " + fileName, Toast.LENGTH_SHORT).show();
     }
+
+    // Get/Set methods for settings dialog
+    void setResolutionIdx(int idx) {
+        resolutionValue = idx;
+        Size resolution = mResolutionList.get(resolutionValue);
+        mOpenCvCameraView.setResolution(resolution);
+        changeVariableSizes();
+    }
+
+    void setIsotropicFilterFlag(boolean flag) {
+        isotropicFilterFlag = flag;
+    }
+
+    void setColorFilterFlag(boolean flag) {
+        colorFilterFlag = flag;
+    }
+
+    boolean getIsotropicFilterFlag() {
+        return isotropicFilterFlag;
+    }
+
+    boolean getColorFilterFlag() {
+        return colorFilterFlag;
+    }
+
+    String[] getResolutionListString()
+    {
+        return mResolutionListString;
+    }
+
+    public void openSettingsDialog()
+    {
+        settingsDialogFragment.show(getFragmentManager(), "acquireSettings");
+    }
+
+    public int getResolutionId()
+    {
+        return resolutionValue;
+    }
+
+    @Override
+    public void onDialogPositiveClick(DialogFragment dialog) {
+
+    }
+
+    @Override
+    public void onDialogNegativeClick(DialogFragment dialog) {
+
+    }
+
 }

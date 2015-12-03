@@ -1,0 +1,62 @@
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:gravity="center_horizontal"
+    android:orientation="vertical" >
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_centerHorizontal="true"
+        android:layout_margin="15dp"
+        android:orientation="vertical" >
+
+        <TextView
+            android:id="@+id/textView1"
+            android:layout_width="fill_parent"
+            android:layout_height="30dp"
+            android:gravity="bottom|center_horizontal"
+            android:text="Settings"
+            android:textAppearance="?android:attr/textAppearanceLarge" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" >
+
+            <TextView
+                android:id="@+id/TextView03"
+                android:layout_width="153dp"
+                android:layout_height="wrap_content"
+                android:text="Camera Resolution:"
+                android:textAppearance="?android:attr/textAppearanceMedium" />
+
+            <Spinner
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/resolutionSpinner"
+                android:layout_weight="1" />
+
+        </LinearLayout>
+
+
+        <CheckBox
+            android:id="@+id/settingsIsoTropicFiltersCheckbox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="52dp"
+            android:checked="true"
+            android:text="Isotropic Filters" />
+
+        <CheckBox
+            android:id="@+id/settingsColorFiltersCheckbox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="52dp"
+            android:checked="true"
+            android:text="Color Camera"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true" />
+
+    </LinearLayout>
+
+</RelativeLayout>
