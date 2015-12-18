@@ -1,4 +1,4 @@
-package fourierfiltercam.phillyberk.com.fourierfiltercamera;
+package com.phillyberk.fourierfiltercamera;
 
 import android.content.Context;
 import android.hardware.Camera;
@@ -8,7 +8,6 @@ import android.util.AttributeSet;
 import android.util.Log;
 
 import org.opencv.android.JavaCameraView;
-import org.opencv.android.NativeCameraView;
 
 import java.io.FileOutputStream;
 import java.util.List;

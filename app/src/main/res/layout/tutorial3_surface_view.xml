@@ -5,7 +5,7 @@
     android:keepScreenOn="true">
 
 
-    <fourierfiltercam.phillyberk.com.fourierfiltercamera.FourierCamView
+    <com.phillyberk.fourierfiltercamera.FourierCamView
     android:layout_width="match_parent"
     android:layout_height="match_parent"
         android:visibility="gone"
