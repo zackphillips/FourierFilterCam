@@ -23,15 +23,15 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewFrame;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.android.LoaderCallbackInterface;
+//import org.opencv.android.OpenCVLoader;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.contrib.Contrib;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
-import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.*;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -42,6 +42,15 @@ import android.app.DialogFragment;
 
 public class FourierCamActivity extends Activity implements CvCameraViewListener2, OnTouchListener, NoticeDialogListener {
     private static final String TAG = "FourierFilterCam::Act";
+
+    static {
+        if (!OpenCVLoader.initDebug()) {
+            Log.d("ERROR", "Unable to load OpenCV");
+        } else {
+            Log.d("SUCCESS", "OpenCV loaded");
+        }
+    }
+
 
     private FourierCamView mOpenCvCameraView;
     private List<Size> mResolutionList;
@@ -111,14 +120,16 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
     private boolean firstSwitch = true;
 
+
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
+        private int status;
+
         @Override
         public void onManagerConnected(int status) {
+
             switch (status) {
                 case LoaderCallbackInterface.SUCCESS: {
                     Log.i(TAG, "OpenCV loaded successfully");
-                    mOpenCvCameraView.enableView();
-                    mOpenCvCameraView.setOnTouchListener(FourierCamActivity.this);
                 }
                 break;
                 default: {
@@ -142,6 +153,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        mLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS);
+
         setContentView(R.layout.tutorial3_surface_view);
 
         mOpenCvCameraView = (FourierCamView) findViewById(R.id.fourier_filter_cam_surface_view);
@@ -161,6 +174,9 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
         fourierButton.setVisibility(mOpenCvCameraView.VISIBLE);
         inverseFourierButton.setVisibility(mOpenCvCameraView.INVISIBLE);
         settingsButton = (Button) findViewById(R.id.settingsButton);
+
+        mOpenCvCameraView.enableView();
+        mOpenCvCameraView.setOnTouchListener(FourierCamActivity.this);
 
         // Set up default filter spinner
         filterListSpinner = (Spinner) findViewById(R.id.filterListSpinner);
@@ -248,7 +264,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
     @Override
     public void onResume() {
         super.onResume();
-        OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_3, this, mLoaderCallback);
+        //OpenCVLoader.initAsync(OpenCVLoader.OPENCV_VERSION_2_4_3, this, mLoaderCallback);
     }
 
     public void onDestroy() {
@@ -341,7 +357,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
         if (dftFlag) // Display Fourier Transform of Image
         {
-            Contrib.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Contrib.COLORMAP_JET);
+
+            Imgproc.applyColorMap(fftMagnitude(inputFrame.gray()), returnMat, Imgproc.COLORMAP_JET);
         } else {
             if (colorFilterFlag)
                 returnMat = applyFourierFilter(inputFrame.rgba());
@@ -535,10 +552,12 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
             case FILTER_MODE_FREEFORM: {
                 // Draw a circle at pointer
                 if (filterInverted)
-                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
+                    Imgproc.circle(touchMask, touchPoint, pointerSize, new Scalar(1), -1);
                 else
-                    Core.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
+                    Imgproc.circle(touchMask, touchPoint, pointerSize, new Scalar(0), -1);
                 break;
+
+
             }
             case FILTER_MODE_BOX: {
                 touchMask = Mat.ones(touchMask.rows(), touchMask.cols(), CvType.CV_32FC1);
@@ -548,7 +567,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
                 Point corner1 = new Point(imgCenterX + rx, imgCenterY + ry);
                 Point corner2 = new Point(imgCenterX - rx, imgCenterY - ry);
-                Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
+                Imgproc.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
 
                 break;
             }
@@ -560,7 +579,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
 
                 Point corner1 = new Point(imgCenterX + rx, imgCenterY + ry);
                 Point corner2 = new Point(imgCenterX, imgCenterY - ry);
-                Core.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
+                Imgproc.rectangle(touchMask, corner1, corner2, new Scalar(0), -1);
 
                 break;
             }
@@ -570,7 +589,7 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
 
                 double radius = Math.sqrt(rx * rx + ry * ry);
-                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
+                Imgproc.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
 
                 break;
             }
@@ -580,12 +599,12 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                 float ry = Math.abs((float) touchPoint.y - (float) imgCenterY);
 
                 double radius = Math.max(Math.sqrt(rx * rx + ry * ry), 0);
-                Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
+                Imgproc.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radius), new Scalar(0), -1);
 
                 // Clear half of the circle
                 Point corner1 = new Point(imgCenterX, 0);
                 Point corner2 = new Point(imgXSize, imgYSize);
-                Core.rectangle(touchMask, corner1, corner2, new Scalar(1), -1);
+                Imgproc.rectangle(touchMask, corner1, corner2, new Scalar(1), -1);
 
                 break;
             }
@@ -600,8 +619,8 @@ public class FourierCamActivity extends Activity implements CvCameraViewListener
                // if (useRealFourierCoverage) {
                //     Core.el
                // }else{
-                    Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusOut), new Scalar(0), -1);
-                    Core.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusIn), new Scalar(1), -1);
+                Imgproc.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusOut), new Scalar(0), -1);
+                Imgproc.circle(touchMask, new Point(imgCenterX, imgCenterY), (int) Math.round(radiusIn), new Scalar(1), -1);
                 //}
 
                 break;
