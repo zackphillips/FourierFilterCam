@@ -63,6 +63,28 @@ The Play listing's package name is `com.phillyberk.fourierfiltercam`, set as
 a new one registered through Play App Signing's key-reset flow. `versionCode`
 must be higher than the last published build.
 
+### Automated releases
+
+`.github/workflows/release.yml` runs on pushes to `master` that touch
+`app/build.gradle.kts`. If `versionName` has no matching `v<versionName>` tag,
+it runs the DSP tests, builds a signed APK and AAB, verifies the signature and
+16 KB alignment, and publishes a GitHub release with both plus `SHA256SUMS`.
+It fails if `versionCode` isn't greater than the one at the latest `v*` tag.
+To release, bump `versionCode` and `versionName` together and merge.
+
+Signing comes from four repository secrets:
+
+| Secret | Value |
+| --- | --- |
+| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 upload-keystore.jks` |
+| `RELEASE_KEYSTORE_PASSWORD` | `storePassword` |
+| `RELEASE_KEY_ALIAS` | `keyAlias` |
+| `RELEASE_KEY_PASSWORD` | `keyPassword` |
+
+With Play App Signing, this APK carries the upload key's signature, not the
+key Play re-signs with, so it can't install over a Play-installed copy (and
+vice versa). Fine for sideloading; uninstall first when switching.
+
 ## Play requirements met
 
 - targetSdk 36 (required for new apps and updates since Aug 31, 2026), compileSdk 37.
