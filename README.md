@@ -33,6 +33,14 @@ are the filtered output, written as lossless PNG to `Pictures/FourierFilterCam`.
   desktop build.
 - `app/`: Android app built with CameraX `ImageAnalysis` (RGBA), Compose UI,
   rendering to a `SurfaceView`, and capture through MediaStore.
+- `ios/`: iOS port. `ios/FourierDSP` is a Swift package with the same
+  geometry, units and engine, using Accelerate (vDSP) instead of OpenCV;
+  `ios/FourierFilterCam` is the SwiftUI + AVFoundation app. See
+  [iOS](#ios) below.
+- `fixtures/dsp.json`: parity fixtures written by the Kotlin DSP tests
+  (masks for every shape, grid sizes, unit conversions, OpenCV colormaps,
+  Hann window, blurred mask) and checked by the Swift tests. A change to
+  filter semantics fails on both platforms until both agree.
 
 ## Building
 
@@ -44,6 +52,18 @@ dependency, so no native binaries are checked in.
 ./gradlew :dsp:test               # DSP unit tests, no device needed
 ./gradlew :app:installDebug       # build and install on a connected device
 ./gradlew :app:bundleRelease      # Play upload artifact (app/build/outputs/bundle/release)
+```
+
+### Parity fixtures
+
+`./gradlew :dsp:test` fails if `fixtures/dsp.json` no longer matches the
+Kotlin DSP. After an intentional change, regenerate it and the iOS
+colormap tables, then make the Swift tests pass:
+
+```sh
+./gradlew :dsp:test -PupdateFixtures
+python3 ios/scripts/gen_colormaps.py
+(cd ios/FourierDSP && swift test)
 ```
 
 ### Release signing
@@ -70,3 +90,36 @@ must be higher than the last published build.
 - Runtime camera permission. No storage permission; captures go through MediaStore.
 - Edge-to-edge and freely resizable, so no orientation lock on large screens.
 - No network access and no data collected.
+
+## iOS
+
+Requires Xcode 16+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+The Xcode project is generated from `ios/project.yml` and not committed.
+
+```sh
+brew install xcodegen
+cd ios
+echo "DEVELOPMENT_TEAM = <your team ID>" > Local.xcconfig   # gitignored
+xcodegen generate
+open FourierFilterCam.xcodeproj                             # run on a device; the simulator has no camera
+(cd FourierDSP && swift test)                               # DSP tests, also run on Linux
+```
+
+How it differs from Android:
+
+- **DFT sizes.** vDSP only takes lengths f·2ⁿ with f ∈ {1, 3, 5, 15} and
+  n ≥ 4, so frames pad to e.g. 768 for 720 and 1280 for 1080 instead of
+  the 2·3·5-smooth sizes OpenCV uses. Masks are rasterized on whatever
+  grid results, so the filter is the same; spectra are sampled more finely.
+- **Units.** iOS does not report sensor size. The app takes focal length
+  in mm from each frame's EXIF and focal length in pixels from the
+  per-frame intrinsic matrix (or the format's field of view), and uses
+  their ratio as the effective pitch at the stream resolution. If EXIF has
+  no focal length, axes fall back to cycles/pixel.
+- **Camera.** It uses the physical wide-angle camera, not the virtual
+  dual/triple devices that swap lenses with zoom, and turns video
+  stabilization off, since its crop would invalidate the field of view.
+- **UI.** Portrait only, iPhone only. Captures go to the photo library as
+  PNG with the filter description in the PNG metadata (add-only Photos
+  permission).
+

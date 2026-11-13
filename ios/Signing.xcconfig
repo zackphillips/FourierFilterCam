@@ -1,0 +1,9 @@
+// Signing settings for the app target.
+//
+// Put your team ID in ios/Local.xcconfig (gitignored) so it survives
+// `xcodegen generate`:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//
+// CI builds without signing (CODE_SIGNING_ALLOWED=NO) and needs neither.
+#include? "Local.xcconfig"

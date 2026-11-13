@@ -3,7 +3,9 @@ name: Android
 on:
   push:
     branches: [master]
+    paths-ignore: ["ios/**", ".github/workflows/ios.yml"]
   pull_request:
+    paths-ignore: ["ios/**", ".github/workflows/ios.yml"]
 
 jobs:
   build:
