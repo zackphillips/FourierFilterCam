@@ -1,0 +1,138 @@
+name: Release
+
+# Publishes a GitHub release with a signed APK (and AAB) whenever master
+# carries a versionName that has no v<versionName> tag yet. Bumping
+# versionName/versionCode in app/build.gradle.kts and merging is the trigger.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - app/build.gradle.kts
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.read.outputs.name }}
+      code: ${{ steps.read.outputs.code }}
+      tag: ${{ steps.read.outputs.tag }}
+      exists: ${{ steps.check.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read version from app/build.gradle.kts
+        id: read
+        run: |
+          name=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts)
+          code=$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' app/build.gradle.kts)
+          if [ -z "$name" ] || [ -z "$code" ]; then
+            echo "::error::Could not parse versionName/versionCode from app/build.gradle.kts"
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "tag=v$name" >> "$GITHUB_OUTPUT"
+          echo "versionName=$name versionCode=$code"
+      - name: Check whether the tag already exists
+        id: check
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.read.outputs.tag }}" >/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.read.outputs.tag }} already released; nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: version
+    if: needs.version.outputs.exists == 'false'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.version.outputs.tag }}
+      VERSION_NAME: ${{ needs.version.outputs.name }}
+      VERSION_CODE: ${{ needs.version.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.0 build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Reject a versionCode that didn't increase
+        run: |
+          prev=$(git tag --list 'v*' --sort=-v:refname | head -n1)
+          if [ -n "$prev" ]; then
+            prev_code=$(git show "$prev:app/build.gradle.kts" | sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p')
+            if [ -n "$prev_code" ] && [ "$VERSION_CODE" -le "$prev_code" ]; then
+              echo "::error::versionCode $VERSION_CODE is not greater than $prev_code from $prev"
+              exit 1
+            fi
+          fi
+
+      - name: Set up release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          for v in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Missing secret for $v; see README 'Automated releases'"
+              exit 1
+            fi
+          done
+          ks="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$ks"
+          {
+            echo "storeFile=$ks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Test, build and sign
+        run: ./gradlew :dsp:test :app:assembleRelease :app:bundleRelease
+
+      - name: Verify signature and 16 KB alignment
+        run: |
+          apk=$(ls app/build/outputs/apk/release/*.apk)
+          case "$apk" in *unsigned*) echo "::error::APK is unsigned"; exit 1;; esac
+          bt="$ANDROID_HOME/build-tools/37.0.0"
+          "$bt/apksigner" verify --print-certs "$apk"
+          "$bt/zipalign" -c -P 16 4 "$apk"
+
+      - name: Stage artifacts
+        run: |
+          mkdir dist
+          cp app/build/outputs/apk/release/*.apk "dist/FourierFilterCam-$VERSION_NAME.apk"
+          cp app/build/outputs/bundle/release/*.aab "dist/FourierFilterCam-$VERSION_NAME.aab"
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Create tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "$VERSION_NAME" \
+            --notes "versionName $VERSION_NAME, versionCode $VERSION_CODE" \
+            --generate-notes
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f keystore.properties "$RUNNER_TEMP/release.jks"
