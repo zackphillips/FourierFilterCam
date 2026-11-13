@@ -1,0 +1,28 @@
+name: Android
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-37.0 build-tools;37.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests (DSP on desktop OpenCV)
+        run: ./gradlew :dsp:test
+      - name: Lint and release bundle
+        run: ./gradlew :app:lintRelease :app:bundleRelease
+      - name: Check 16 KB alignment of native libraries
+        run: |
+          ./gradlew :app:assembleRelease
+          "$ANDROID_HOME/build-tools/37.0.0/zipalign" -c -P 16 -v 4 app/build/outputs/apk/release/*.apk | grep -E 'lib/|Verification'
