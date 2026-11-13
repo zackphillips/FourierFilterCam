@@ -20,6 +20,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests (DSP on desktop OpenCV)
         run: ./gradlew :dsp:test
+      - name: Layout tests (Robolectric, 8 window sizes x 2 modes)
+        run: ./gradlew :app:testDebugUnitTest -Proborazzi.test.record=true
+      - name: Upload layout screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-screenshots
+          path: app/build/outputs/roborazzi/
       - name: Lint and release bundle
         run: ./gradlew :app:lintRelease :app:bundleRelease
       - name: Check 16 KB alignment of native libraries

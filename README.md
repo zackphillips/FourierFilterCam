@@ -42,6 +42,8 @@ dependency, so no native binaries are checked in.
 
 ```sh
 ./gradlew :dsp:test               # DSP unit tests, no device needed
+./gradlew :app:testDebugUnitTest -Proborazzi.test.record=true
+                                  # layout tests at 8 window sizes; PNGs in app/build/outputs/roborazzi
 ./gradlew :app:installDebug       # build and install on a connected device
 ./gradlew :app:bundleRelease      # Play upload artifact (app/build/outputs/bundle/release)
 ```
@@ -91,4 +93,12 @@ vice versa). Fine for sideloading; uninstall first when switching.
 - 16 KB page-size aligned native libraries; CI verifies with `zipalign -P 16`.
 - Runtime camera permission. No storage permission; captures go through MediaStore.
 - Edge-to-edge and freely resizable, so no orientation lock on large screens.
+  Controls switch between three arrangements by available window size:
+  stacked rows (narrow), a side rail (short, e.g. landscape phones), and single
+  rows (tablets, foldables, desktop windows). Layout tests render the real
+  screen with Robolectric on small, regular and landscape phones, an unfolded
+  foldable, portrait and landscape tablets, a 220dp multi-window pane, and 2×
+  font scale. They check that every control is on screen, at least 48dp, and
+  not overlapping another control, and that the shutter is visible without
+  scrolling.
 - No network access and no data collected.

@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.roborazzi)
 }
 
 // Release signing is read from an untracked keystore.properties at the repo
@@ -58,6 +59,15 @@ android {
         compose = true
     }
 
+    testOptions {
+        // Robolectric renders the real Compose UI on the JVM for layout tests.
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            // Robolectric reaches into FileDescriptor internals, closed by default on JDK 17+.
+            it.jvmArgs("--add-opens=java.base/java.io=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+        }
+    }
+
     packaging {
         // Store .so files uncompressed and 16 KB-aligned so they load in place.
         jniLibs.useLegacyPackaging = false
@@ -80,4 +90,12 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
     implementation(libs.compose.material.icons)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
